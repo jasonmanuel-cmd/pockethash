@@ -1,10 +1,16 @@
 import { createClient } from '@libsql/client';
 import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 dotenv.config();
 
+const useRemoteDatabase = process.env.POCKETHASH_USE_REMOTE === 'true'
+  || (process.env.NODE_ENV === 'production' && Boolean(process.env.TURSO_DATABASE_URL));
+
 const client = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:sqlite.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: useRemoteDatabase && process.env.TURSO_DATABASE_URL
+    ? process.env.TURSO_DATABASE_URL
+    : 'file:sqlite.db',
+  authToken: useRemoteDatabase ? process.env.TURSO_AUTH_TOKEN : undefined,
 });
 
 async function init() {
@@ -80,26 +86,34 @@ async function init() {
     { name: 'Caramel Chews', category: 'Edibles', strainType: 'Sativa', thc: '80mg', description: '8 pieces, 10mg each. Buttery and rich.', price: 18 },
   ];
 
+  let seededProducts = 0;
   for (const p of initialProducts) {
-    try {
-      await client.execute({
-        sql: 'INSERT INTO products (name, category, strain_type, thc, description, price) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [p.name, p.category, p.strainType, p.thc, p.description, p.price]
-      });
-    } catch (e) {
-      // Duplicates ignored
-    }
+    const result = await client.execute({
+      sql: `
+        INSERT INTO products (name, category, strain_type, thc, description, price)
+        SELECT ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM products WHERE name = ? AND category = ?
+        )
+      `,
+      args: [p.name, p.category, p.strainType, p.thc, p.description, p.price, p.name, p.category]
+    });
+
+    seededProducts += Number(result.rowsAffected ?? 0);
   }
 
-  // Admin user
-  try {
-    await client.execute({
-      sql: 'INSERT INTO users (phone, name, points) VALUES (?, ?, ?)',
-      args: ['5555555555', 'Pocket Admin', 1000]
-    });
-  } catch (e) { }
+  await client.execute({
+    sql: `
+      INSERT INTO users (phone, name, points)
+      SELECT ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM users WHERE phone = ?
+      )
+    `,
+    args: ['5555555555', 'Pocket Admin', 1000, '5555555555']
+  });
 
-  console.log('✅ Database seeded with vault items.');
+  console.log(`✅ Database seeded with vault items. Added ${seededProducts} new products.`);
   process.exit(0);
 }
 

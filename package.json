@@ -1,8 +1,10 @@
 {
-  "name": "weed-delivery",
+  "name": "pockethash",
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:init": "node src/db/run-init.mjs",
+    "db:seed-demo": "node src/db/seed-demo.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

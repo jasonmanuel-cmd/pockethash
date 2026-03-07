@@ -1,10 +1,16 @@
 import { createClient } from '@libsql/client';
 import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 dotenv.config();
 
+const useRemoteDatabase = process.env.POCKETHASH_USE_REMOTE === 'true'
+    || (process.env.NODE_ENV === 'production' && Boolean(process.env.TURSO_DATABASE_URL));
+
 const client = createClient({
-    url: process.env.TURSO_DATABASE_URL || 'file:sqlite.db',
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: useRemoteDatabase && process.env.TURSO_DATABASE_URL
+        ? process.env.TURSO_DATABASE_URL
+        : 'file:sqlite.db',
+    authToken: useRemoteDatabase ? process.env.TURSO_AUTH_TOKEN : undefined,
 });
 
 async function seedDemoData() {
@@ -41,8 +47,19 @@ async function seedDemoData() {
         });
         if (user.rows[0]) {
             await client.execute({
-                sql: 'INSERT INTO orders (user_id, total_amount, points_earned, points_redeemed) VALUES (?, ?, ?, 0)',
-                args: [user.rows[0].id, o.amount, o.points]
+                sql: `
+                    INSERT INTO orders (user_id, total_amount, points_earned, points_redeemed)
+                    SELECT ?, ?, ?, 0
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM orders
+                        WHERE user_id = ?
+                          AND total_amount = ?
+                          AND points_earned = ?
+                          AND points_redeemed = 0
+                    )
+                `,
+                args: [user.rows[0].id, o.amount, o.points, user.rows[0].id, o.amount, o.points]
             });
         }
     }

@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pocket Hash
 
-## Getting Started
+Pocket Hash is a demo-ready storefront, loyalty program, and POS dashboard built with Next.js, Drizzle, and SQLite/libSQL.
 
-First, run the development server:
+## Launch
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run db:init
+npm run db:seed-demo
+npm run build
+npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Or on Windows, double-click `START_STORE.bat`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The demo will:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create the database tables if they do not exist.
+2. Seed the catalog and demo members without duplicating existing data.
+3. Build the production app.
+4. Start the app at `http://localhost:3000`.
 
-## Learn More
+Local development uses `sqlite.db` by default, even if Turso credentials exist in `.env.local`. To force the app onto Turso, set `POCKETHASH_USE_REMOTE=true`.
 
-To learn more about Next.js, take a look at the following resources:
+If you want hot reloading while editing locally, run `npm run db:init`, `npm run db:seed-demo`, then `npm run dev`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Demo Paths
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Customer landing: `http://localhost:3000`
+- Customer menu: sign in with `6615551111`
+- Admin dashboard: `http://localhost:3000/admin`
+- POS terminal: `http://localhost:3000/admin/pos`
 
-## Deploy on Vercel
+## Demo Accounts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `6615551111` - James "OG" Miller
+- `6615552222` - Sarah Green
+- `5555555555` - Master Admin
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+
+- Customer dispatch orders now write into the live demo database.
+- POS checkout validates prices and rewards on the server before saving the order.
+- Re-running the seed scripts is safe for the default demo dataset.
