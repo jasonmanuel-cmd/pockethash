@@ -1,9 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-
-  title: "Pocket Hash",
-  description: "Members-only delivery service. Same-day drops.",
+  title: 'Pocket Hash | Private Commerce OS',
+  description: 'Private delivery, pickup, and in-store commerce software with loyalty, POS controls, and owner-managed deployment.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

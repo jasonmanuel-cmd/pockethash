@@ -7,9 +7,17 @@
   --foreground: #fafafa;
 }
 
+html {
+  background: #040706;
+}
+
 body {
+  min-height: 100vh;
   color: var(--foreground);
-  background: var(--background);
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 28%),
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.06), transparent 22%),
+    linear-gradient(180deg, #040706 0%, #080b0a 48%, #030504 100%);
 }
 
 .scrollbar-hide {
