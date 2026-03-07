@@ -3,7 +3,16 @@
 import { db } from '@/db';
 import { users, orders, orderItems, products } from '@/db/schema';
 import { getRewardTier } from '@/lib/loyalty';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import {
+    FULFILLMENT_TYPES,
+    ORDER_STATUSES,
+    getInitialOrderStatus,
+    getWorkflowSequence,
+    isOpenWorkflowStatus,
+    type FulfillmentType,
+    type OrderStatus,
+} from '@/lib/order-workflow';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 
 type SaleItemInput = {
     productId: number;
@@ -16,6 +25,17 @@ type SaleInput = {
     items: SaleItemInput[];
     pointsSpent?: number;
     discountApplied?: number;
+    fulfillmentType?: FulfillmentType;
+    assignedTo?: string;
+    fulfillmentWindow?: string;
+    customerNote?: string;
+};
+
+type WorkflowUpdateInput = {
+    orderId: number;
+    status?: OrderStatus;
+    assignedTo?: string;
+    fulfillmentWindow?: string;
 };
 
 const normalizePhone = (phone: string) => phone.replace(/\D/g, '');
@@ -26,6 +46,34 @@ function validatePhone(phone: string) {
         throw new Error('Enter a valid 10-digit phone number.');
     }
     return normalized;
+}
+
+function normalizeOptionalText(value?: string, maxLength = 120) {
+    const nextValue = value?.trim();
+    if (!nextValue) {
+        return null;
+    }
+    return nextValue.slice(0, maxLength);
+}
+
+function isFulfillmentType(value: string): value is FulfillmentType {
+    return FULFILLMENT_TYPES.includes(value as FulfillmentType);
+}
+
+function isOrderStatus(value: string): value is OrderStatus {
+    return ORDER_STATUSES.includes(value as OrderStatus);
+}
+
+function validateFulfillmentType(value?: string): FulfillmentType {
+    if (!value) {
+        return 'delivery';
+    }
+
+    if (!isFulfillmentType(value)) {
+        throw new Error('Invalid fulfillment mode selected.');
+    }
+
+    return value;
 }
 
 function consolidateItems(items: SaleItemInput[]) {
@@ -82,6 +130,10 @@ async function processSale(data: SaleInput) {
     const normalizedPhone = validatePhone(data.phone);
     const pointsSpent = data.pointsSpent ?? 0;
     const discountApplied = data.discountApplied ?? 0;
+    const fulfillmentType = validateFulfillmentType(data.fulfillmentType);
+    const assignedTo = normalizeOptionalText(data.assignedTo, 80);
+    const fulfillmentWindow = normalizeOptionalText(data.fulfillmentWindow, 80);
+    const customerNote = normalizeOptionalText(data.customerNote, 220);
 
     if (pointsSpent < 0 || discountApplied < 0) {
         throw new Error('Rewards cannot be negative.');
@@ -99,6 +151,7 @@ async function processSale(data: SaleInput) {
     const subtotal = resolvedItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const total = Math.max(0, subtotal - discountApplied);
     const pointsEarned = Math.floor(total);
+    const status = getInitialOrderStatus(fulfillmentType);
 
     let user = await getUserByPhone(normalizedPhone);
     if (!user && pointsSpent > 0) {
@@ -119,7 +172,11 @@ async function processSale(data: SaleInput) {
             totalAmount: total,
             pointsEarned,
             pointsRedeemed: pointsSpent,
-            status: 'completed',
+            status,
+            fulfillmentType,
+            assignedTo,
+            fulfillmentWindow,
+            customerNote,
         }).returning();
 
         const createdOrder = insertedOrders[0];
@@ -151,15 +208,16 @@ async function processSale(data: SaleInput) {
         total,
         pointsEarned,
         updatedPoints: updatedUser?.points ?? user.points + pointsEarned - pointsSpent,
+        status,
+        fulfillmentType,
     };
 }
 
 export async function getUserByPhone(phone: string) {
     const normalized = normalizePhone(phone);
-    const user = await db.query.users.findFirst({
+    return db.query.users.findFirst({
         where: eq(users.phone, normalized),
     });
-    return user;
 }
 
 export async function createOrUpdateUser(phone: string, name?: string) {
@@ -187,6 +245,10 @@ export async function completeSale(data: {
     items: { productId: number; quantity: number; price: number }[];
     pointsSpent: number;
     discountApplied: number;
+    fulfillmentType?: FulfillmentType;
+    assignedTo?: string;
+    fulfillmentWindow?: string;
+    customerNote?: string;
 }) {
     return processSale(data);
 }
@@ -194,6 +256,9 @@ export async function completeSale(data: {
 export async function placeCustomerOrder(data: {
     phone: string;
     items: { productId: number; quantity: number }[];
+    fulfillmentType?: FulfillmentType;
+    fulfillmentWindow?: string;
+    customerNote?: string;
 }) {
     return processSale({
         ...data,
@@ -203,7 +268,7 @@ export async function placeCustomerOrder(data: {
 }
 
 export async function getProducts() {
-    return await db.query.products.findMany({
+    return db.query.products.findMany({
         where: eq(products.isActive, true),
     });
 }
@@ -212,23 +277,86 @@ export async function getDashboardStats() {
     const allOrders = await db.query.orders.findMany();
     const allUsers = await db.query.users.findMany();
 
-    const totalSales = allOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-    const totalPoints = allUsers.reduce((sum, u) => sum + u.points, 0);
+    const totalSales = allOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const totalPoints = allUsers.reduce((sum, user) => sum + user.points, 0);
+    const openOrders = allOrders.filter((order) => isOrderStatus(order.status) && isOpenWorkflowStatus(order.status));
 
     return {
         totalSales,
         customerCount: allUsers.length,
         activePoints: totalPoints,
-        orderCount: allOrders.length
+        orderCount: allOrders.length,
+        openOrderCount: openOrders.length,
+        deliveryCount: allOrders.filter((order) => order.fulfillmentType === 'delivery').length,
+        pickupCount: allOrders.filter((order) => order.fulfillmentType === 'pickup').length,
+        inStoreCount: allOrders.filter((order) => order.fulfillmentType === 'in_store').length,
     };
 }
 
 export async function getRecentOrders() {
-    return await db.query.orders.findMany({
+    return db.query.orders.findMany({
         with: {
-            user: true
+            user: true,
         },
         limit: 10,
-        orderBy: (orders, { desc }) => [desc(orders.createdAt)],
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
     });
+}
+
+export async function getOpenOrders() {
+    return db.query.orders.findMany({
+        where: ne(orders.status, 'completed'),
+        with: {
+            user: true,
+        },
+        limit: 12,
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
+    });
+}
+
+export async function updateOrderWorkflow(data: WorkflowUpdateInput) {
+    if (!Number.isInteger(data.orderId) || data.orderId <= 0) {
+        throw new Error('Invalid order selected.');
+    }
+
+    const order = await db.query.orders.findFirst({
+        where: eq(orders.id, data.orderId),
+    });
+
+    if (!order) {
+        throw new Error('Order not found.');
+    }
+
+    const nextStatus = data.status ?? (isOrderStatus(order.status) ? order.status : 'new');
+    if (!isOrderStatus(nextStatus)) {
+        throw new Error('Invalid order status.');
+    }
+
+    const fulfillmentType = validateFulfillmentType(order.fulfillmentType);
+    const allowedStatuses = getWorkflowSequence(fulfillmentType);
+    if (!allowedStatuses.includes(nextStatus)) {
+        throw new Error('That status does not fit this fulfillment mode.');
+    }
+
+    const assignedTo = normalizeOptionalText(data.assignedTo, 80);
+    const fulfillmentWindow = normalizeOptionalText(data.fulfillmentWindow, 80);
+
+    await db.update(orders).set({
+        status: nextStatus,
+        assignedTo,
+        fulfillmentWindow,
+    }).where(eq(orders.id, data.orderId));
+
+    const updatedOrder = await db.query.orders.findFirst({
+        where: eq(orders.id, data.orderId),
+        with: {
+            user: true,
+        },
+    });
+
+    if (!updatedOrder) {
+        throw new Error('Order could not be refreshed.');
+    }
+
+    return updatedOrder;
 }

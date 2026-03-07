@@ -35,9 +35,36 @@ async function seedDemoData() {
 
     // Inject some demo orders to make the charts/logs look active
     const demoOrders = [
-        { phone: '6615551111', amount: 45, points: 45 },
-        { phone: '6615552222', amount: 120, points: 120 },
-        { phone: '6615551111', amount: 65, points: 65 }
+        {
+            phone: '6615551111',
+            amount: 45,
+            points: 45,
+            status: 'confirmed',
+            fulfillmentType: 'delivery',
+            assignedTo: 'North Route',
+            fulfillmentWindow: 'ASAP',
+            customerNote: 'Gate code 204. Call on arrival.'
+        },
+        {
+            phone: '6615552222',
+            amount: 120,
+            points: 120,
+            status: 'ready',
+            fulfillmentType: 'pickup',
+            assignedTo: 'Pickup Shelf A',
+            fulfillmentWindow: 'After 5:30 PM',
+            customerNote: 'Blue sedan. Text when curbside.'
+        },
+        {
+            phone: '6615551111',
+            amount: 65,
+            points: 65,
+            status: 'completed',
+            fulfillmentType: 'in_store',
+            assignedTo: 'Counter 1',
+            fulfillmentWindow: 'Walk-in',
+            customerNote: 'VIP member.'
+        }
     ];
 
     for (const o of demoOrders) {
@@ -48,8 +75,8 @@ async function seedDemoData() {
         if (user.rows[0]) {
             await client.execute({
                 sql: `
-                    INSERT INTO orders (user_id, total_amount, points_earned, points_redeemed)
-                    SELECT ?, ?, ?, 0
+                    INSERT INTO orders (user_id, total_amount, points_earned, points_redeemed, status, fulfillment_type, assigned_to, fulfillment_window, customer_note)
+                    SELECT ?, ?, ?, 0, ?, ?, ?, ?, ?
                     WHERE NOT EXISTS (
                         SELECT 1
                         FROM orders
@@ -57,9 +84,25 @@ async function seedDemoData() {
                           AND total_amount = ?
                           AND points_earned = ?
                           AND points_redeemed = 0
+                          AND status = ?
+                          AND fulfillment_type = ?
                     )
                 `,
-                args: [user.rows[0].id, o.amount, o.points, user.rows[0].id, o.amount, o.points]
+                args: [
+                    user.rows[0].id,
+                    o.amount,
+                    o.points,
+                    o.status,
+                    o.fulfillmentType,
+                    o.assignedTo,
+                    o.fulfillmentWindow,
+                    o.customerNote,
+                    user.rows[0].id,
+                    o.amount,
+                    o.points,
+                    o.status,
+                    o.fulfillmentType
+                ]
             });
         }
     }

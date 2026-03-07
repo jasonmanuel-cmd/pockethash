@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import type { FulfillmentType, OrderStatus } from '@/lib/order-workflow';
 
 export const users = sqliteTable('users', {
     id: integer('id').primaryKey({ autoIncrement: true }),
@@ -27,7 +28,11 @@ export const orders = sqliteTable('orders', {
     totalAmount: real('total_amount').notNull(),
     pointsEarned: integer('points_earned').notNull(),
     pointsRedeemed: integer('points_redeemed').notNull().default(0),
-    status: text('status').notNull().default('completed'), // completed, pending, cancelled
+    status: text('status').$type<OrderStatus>().notNull().default('completed'),
+    fulfillmentType: text('fulfillment_type').$type<FulfillmentType>().notNull().default('delivery'),
+    assignedTo: text('assigned_to'),
+    fulfillmentWindow: text('fulfillment_window'),
+    customerNote: text('customer_note'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(new Date()),
 });
 

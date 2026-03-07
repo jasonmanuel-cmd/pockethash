@@ -13,6 +13,13 @@ const client = createClient({
   authToken: useRemoteDatabase ? process.env.TURSO_AUTH_TOKEN : undefined,
 });
 
+async function ensureColumn(table, column, definition) {
+  const result = await client.execute(`SELECT name FROM pragma_table_info('${table}') WHERE name = '${column}'`);
+  if (result.rows.length === 0) {
+    await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 async function init() {
   console.log('🔄 Initializing Vault database...');
 
@@ -49,6 +56,10 @@ async function init() {
       points_earned INTEGER NOT NULL,
       points_redeemed INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'completed',
+      fulfillment_type TEXT NOT NULL DEFAULT 'delivery',
+      assigned_to TEXT,
+      fulfillment_window TEXT,
+      customer_note TEXT,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
@@ -62,6 +73,13 @@ async function init() {
       price_at_time REAL NOT NULL
     );
   `);
+
+  await ensureColumn('orders', 'fulfillment_type', "TEXT NOT NULL DEFAULT 'delivery'");
+  await ensureColumn('orders', 'assigned_to', 'TEXT');
+  await ensureColumn('orders', 'fulfillment_window', 'TEXT');
+  await ensureColumn('orders', 'customer_note', 'TEXT');
+
+  await client.execute("UPDATE orders SET fulfillment_type = 'delivery' WHERE fulfillment_type IS NULL");
 
   console.log('✅ Tables standing up.');
 

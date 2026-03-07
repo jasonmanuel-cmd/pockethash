@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProducts, getUserByPhone, placeCustomerOrder } from '@/app/actions/pos';
 import { REWARD_TIERS } from '@/lib/loyalty';
+import { FULFILLMENT_LABELS, ORDER_STATUS_LABELS, type FulfillmentType } from '@/lib/order-workflow';
 import { ShoppingBag, Star, LogOut, ChevronRight, Minus, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,6 +31,9 @@ export default function MenuPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('delivery');
+  const [fulfillmentWindow, setFulfillmentWindow] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const clearSession = () => {
@@ -135,6 +139,9 @@ export default function MenuPage() {
           productId: item.id,
           quantity: item.quantity,
         })),
+        fulfillmentType,
+        fulfillmentWindow,
+        customerNote,
       });
 
       setUser((current) => (
@@ -142,9 +149,11 @@ export default function MenuPage() {
       ));
       setCart([]);
       setIsCartOpen(false);
+      setFulfillmentWindow('');
+      setCustomerNote('');
       setNotice({
         type: 'success',
-        text: `Dispatch confirmed for order #${result.orderId}. ${result.pointsEarned} points added to this member account.`,
+        text: `${FULFILLMENT_LABELS[result.fulfillmentType]} order #${result.orderId} submitted. Status: ${ORDER_STATUS_LABELS[result.status]}. ${result.pointsEarned} points added to this member account.`,
       });
     } catch (error) {
       console.error(error);
@@ -400,6 +409,48 @@ export default function MenuPage() {
               </div>
               {cart.length > 0 && (
                 <div className="p-8 bg-zinc-900/30 border-t border-zinc-900 space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">Fulfillment</p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        {(['delivery', 'pickup'] as FulfillmentType[]).map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setFulfillmentType(type)}
+                            className={`rounded-2xl border px-4 py-3 text-[10px] font-black uppercase tracking-[0.25em] transition-all ${
+                              fulfillmentType === type
+                                ? 'border-emerald-500 bg-emerald-500/15 text-white'
+                                : 'border-zinc-800 bg-zinc-950 text-zinc-500 hover:border-zinc-700 hover:text-white'
+                            }`}
+                          >
+                            {FULFILLMENT_LABELS[type]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">Timing Window</label>
+                      <input
+                        value={fulfillmentWindow}
+                        onChange={(event) => setFulfillmentWindow(event.target.value)}
+                        placeholder={fulfillmentType === 'delivery' ? 'ASAP, 45 minutes, after 6 PM' : 'Ready by 5:30 PM'}
+                        className="mt-2 h-11 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-sm text-white outline-none transition-all focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">Notes for Dispatch</label>
+                      <textarea
+                        value={customerNote}
+                        onChange={(event) => setCustomerNote(event.target.value)}
+                        placeholder={fulfillmentType === 'delivery' ? 'Gate code, apartment, landmark, call on arrival...' : 'Pickup car color, curbside note, first name...'}
+                        rows={3}
+                        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-all focus:border-emerald-500 resize-none"
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black text-zinc-600 uppercase tracking-widest">Estimated Points Earned</span>
@@ -418,10 +469,12 @@ export default function MenuPage() {
                     {isSubmitting ? (
                       <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                     ) : (
-                      'Dispatch Order'
+                      fulfillmentType === 'delivery' ? 'Send Delivery Order' : 'Submit Pickup Order'
                     )}
                   </button>
-                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest text-center">Dispatch will text confirmation & ETA</p>
+                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest text-center">
+                    {fulfillmentType === 'delivery' ? 'Dispatch will text confirmation & ETA' : 'Pickup confirmation will be sent when the order is ready'}
+                  </p>
                 </div>
               )}
             </motion.div>

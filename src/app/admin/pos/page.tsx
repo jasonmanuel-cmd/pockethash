@@ -3,6 +3,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { completeSale, getProducts, getUserByPhone } from '@/app/actions/pos';
 import { REWARD_TIERS } from '@/lib/loyalty';
+import {
+    FULFILLMENT_LABELS,
+    FULFILLMENT_TYPES,
+    ORDER_STATUS_LABELS,
+    type FulfillmentType,
+} from '@/lib/order-workflow';
 import { Search, ShoppingBag, User, Plus, Minus, CheckCircle, Gift } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -33,6 +39,10 @@ export default function POSPage() {
     const [isLookupLoading, setIsLookupLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [activeCategory, setActiveCategory] = useState('All');
+    const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('in_store');
+    const [assignedTo, setAssignedTo] = useState('');
+    const [fulfillmentWindow, setFulfillmentWindow] = useState('');
+    const [customerNote, setCustomerNote] = useState('');
     const [step, setStep] = useState(1);
     const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -58,6 +68,16 @@ export default function POSPage() {
     const filteredProducts = activeCategory === 'All'
         ? products
         : products.filter((product) => product.category === activeCategory);
+    const assignmentLabel = fulfillmentType === 'delivery'
+        ? 'Driver / Route'
+        : fulfillmentType === 'pickup'
+            ? 'Pickup Lead'
+            : 'Counter / Staff';
+    const windowPlaceholder = fulfillmentType === 'delivery'
+        ? 'ASAP, 30 min, after 7 PM'
+        : fulfillmentType === 'pickup'
+            ? 'Ready by 5:30 PM'
+            : 'Walk-in';
 
     const resetTerminal = (preserveNotice = false) => {
         setPhone('');
@@ -65,6 +85,10 @@ export default function POSPage() {
         setCart([]);
         setSelectedReward(null);
         setActiveCategory('All');
+        setFulfillmentType('in_store');
+        setAssignedTo('');
+        setFulfillmentWindow('');
+        setCustomerNote('');
         setStep(1);
         if (!preserveNotice) {
             setNotice(null);
@@ -150,12 +174,16 @@ export default function POSPage() {
                 })),
                 pointsSpent: selectedReward?.points ?? 0,
                 discountApplied: selectedReward?.credit ?? 0,
+                fulfillmentType,
+                assignedTo,
+                fulfillmentWindow,
+                customerNote,
             });
 
             resetTerminal(true);
             setNotice({
                 type: 'success',
-                text: `Order #${result.orderId} captured for $${result.total.toFixed(2)}. ${result.pointsEarned} loyalty points earned.`,
+                text: `${FULFILLMENT_LABELS[result.fulfillmentType]} order #${result.orderId} saved for $${result.total.toFixed(2)}. Status: ${ORDER_STATUS_LABELS[result.status]}. ${result.pointsEarned} loyalty points earned.`,
             });
         } catch (error) {
             console.error(error);
@@ -355,6 +383,58 @@ export default function POSPage() {
                                 )}
 
                                 <div className="pt-6 border-t border-zinc-800 space-y-4">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Fulfillment Mode</h4>
+                                            <div className="mt-3 grid grid-cols-3 gap-2">
+                                                {FULFILLMENT_TYPES.map((type) => (
+                                                    <button
+                                                        key={type}
+                                                        onClick={() => setFulfillmentType(type)}
+                                                        className={`rounded-2xl border px-3 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                            fulfillmentType === type
+                                                                ? 'border-emerald-500 bg-emerald-500/15 text-white'
+                                                                : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-700 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {FULFILLMENT_LABELS[type]}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3">
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{assignmentLabel}</label>
+                                                <input
+                                                    value={assignedTo}
+                                                    onChange={(event) => setAssignedTo(event.target.value)}
+                                                    placeholder={fulfillmentType === 'delivery' ? 'North Route' : fulfillmentType === 'pickup' ? 'Pickup Shelf A' : 'Counter 1'}
+                                                    className="mt-2 h-11 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-sm text-white outline-none transition-all focus:border-emerald-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Timing Window</label>
+                                                <input
+                                                    value={fulfillmentWindow}
+                                                    onChange={(event) => setFulfillmentWindow(event.target.value)}
+                                                    placeholder={windowPlaceholder}
+                                                    className="mt-2 h-11 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-sm text-white outline-none transition-all focus:border-emerald-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Order Note</label>
+                                                <textarea
+                                                    value={customerNote}
+                                                    onChange={(event) => setCustomerNote(event.target.value)}
+                                                    placeholder={fulfillmentType === 'delivery' ? 'Gate code, call on arrival, suite number...' : fulfillmentType === 'pickup' ? 'Car color, pickup instructions...' : 'VIP note or counter remark...'}
+                                                    rows={3}
+                                                    className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-all focus:border-emerald-500 resize-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="flex items-center gap-2 mb-2">
                                         <Gift className="w-4 h-4 text-emerald-400" />
                                         <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Available Rewards</h4>
@@ -410,7 +490,7 @@ export default function POSPage() {
                                         <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                                     ) : (
                                         <>
-                                            Complete Order
+                                            {fulfillmentType === 'in_store' ? 'Complete Sale' : `Queue ${FULFILLMENT_LABELS[fulfillmentType]} Order`}
                                             <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
                                         </>
                                     )}
